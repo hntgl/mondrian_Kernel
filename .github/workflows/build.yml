@@ -17,16 +17,21 @@ on:
         required: false
         type: string
         default: 'lineage-23.2'
-      kernel_defconfig:
-        description: 'Defconfig (relative to arch/arm64/configs/)'
+      kpm_support:
+        description: 'Enable KPM support'
         required: false
-        type: string
-        default: 'gki_defconfig'
-      extra_configs:
-        description: 'Extra config fragments to merge (space-separated, relative to arch/arm64/configs/)'
+        type: boolean
+        default: false
+      susfs_support:
+        description: 'Enable SUSFS support'
         required: false
-        type: string
-        default: 'vendor/waipio_GKI.config vendor/nothing/waipio_GKI.config vendor/debugfs.config'
+        type: boolean
+        default: true
+      bbg_support:
+        description: 'Enable BBG support'
+        required: false
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -38,20 +43,28 @@ on:
         required: false
         type: string
         default: 'lineage-23.2'
-      kernel_defconfig:
+      kpm_support:
         required: false
-        type: string
-        default: 'gki_defconfig'
-      extra_configs:
+        type: boolean
+        default: false
+      susfs_support:
         required: false
-        type: string
-        default: 'vendor/waipio_GKI.config vendor/nothing/waipio_GKI.config vendor/debugfs.config'
+        type: boolean
+        default: true
+      bbg_support:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
+      KERNEL_DIR: kernel
+      ANYKERNEL_DIR: AnyKernel3
+      DEFCONFIG: gki_defconfig
+      DEFCONFIG_FRAGS: vendor/waipio_GKI.config vendor/nothing/waipio_GKI.config vendor/debugfs.config
       MAKE_ARGS: >-
         ARCH=arm64
         CROSS_COMPILE=aarch64-linux-gnu-
@@ -72,98 +85,50 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libelf-dev libssl-dev \
             lz4 zip python3 clang llvm lld gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi
+            gcc-arm-linux-gnueabi wget
 
       - name: Clone sources
         run: |
-          # Kernel
           git clone --depth=1 -b "${{ inputs.kernel_branch || 'lineage-23.2' }}" \
             "${{ inputs.kernel_repo || 'https://github.com/LineageOS/android_kernel_nothing_sm8475.git' }}" \
-            kernel
+            "$KERNEL_DIR"
 
-          # AnyKernel3
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git
-          rm -rf AnyKernel3/.git
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$ANYKERNEL_DIR"
+          rm -rf "$ANYKERNEL_DIR/.git"
 
-          # SUSFS
+      - name: Clone SUSFS
+        if: ${{ inputs.susfs_support == true }}
+        run: |
           git clone --depth=1 -b gki-android13-5.10 \
             https://gitlab.com/simonpunk/susfs4ksu.git
 
       - name: Setup ReSukiSU
         run: |
-          cd kernel
+          cd "$KERNEL_DIR"
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
       - name: Apply SUSFS patches
+        if: ${{ inputs.susfs_support == true }}
         run: |
-          cd kernel
-
-          # Copy SUSFS source files
+          cd "$KERNEL_DIR"
           cp ../susfs4ksu/kernel_patches/fs/* ./fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
-
-          # Apply kernel patch
           patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.10.patch
 
-          # Safety net: force susfs.o into the build regardless of Kconfig resolution.
-          # The Configure step uses scripts/config to guarantee CONFIG_KSU_SUSFS=y,
-          # but obj-y avoids a silent empty-object link failure if it gets dropped.
-          # sed -i 's/obj-$(CONFIG_KSU_SUSFS) += susfs.o/obj-y += susfs.o/' fs/Makefile
-          # grep -q 'susfs\.o' fs/Makefile || echo 'obj-y += susfs.o' >> fs/Makefile
-
-      # In case I need the below for other kernel I keep it but not needed rn :b
-      # - name: Add ReSukiSU patches
-      #   run: |
-      #     cd kernel
-      #     # Apply ReSukiSU patches
-      #     find ../patches -type f -name '*.diff' | while read -r patch; do
-      #       echo "Applying $patch"
-      #       patch -p1 < "$patch"
-      #     done
-
-      - name: Configure kernel
+      - name: Apply BBG patches
+        if: ${{ inputs.bbg_support == true }}
         run: |
-          cd kernel
-          DEFCONFIG="./arch/arm64/configs/${{ inputs.kernel_defconfig || 'gki_defconfig' }}"
+          cd "$KERNEL_DIR"
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
 
-          # Merge extra config fragments into defconfig (if any)
-          EXTRA="${{ inputs.extra_configs }}"
-          if [ -n "$EXTRA" ]; then
-            for frag in $EXTRA; do
-              FRAG_PATH="./arch/arm64/configs/$frag"
-              if [ -f "$FRAG_PATH" ]; then
-                echo "Merging: $frag"
-                cat "$FRAG_PATH" >> "$DEFCONFIG"
-              fi
-            done
-          fi
-
-          # Add ReSukiSU configs
-          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
-          echo "CONFIG_KPM=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_MANUAL_HOOK_AUTO_INPUT_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_MANUAL_HOOK_AUTO_SETUID_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_MANUAL_HOOK_AUTO_INITRC_HOOK=y" >> "$DEFCONFIG"
-
-          # Generate initial .config from defconfig
-          make $MAKE_ARGS "${{ inputs.kernel_defconfig || 'gki_defconfig' }}"
-
-          # Force-set configs via scripts/config so Kconfig cannot silently drop them
-          KCFG="./scripts/config --file out/.config"
-          $KCFG -e KSU
-          $KCFG -e KSU_SUSFS
-
-          # Resolve dependencies without dropping our forced configs
-          make $MAKE_ARGS olddefconfig
-
-          # Remove -dirty suffix
-          [ -f scripts/setlocalversion ] && sed -i 's/-dirty//g' scripts/setlocalversion || true
+      - name: Prepare build scripts
+        run: |
+          chmod +x Scripts/build_kernel.sh
+          chmod +x Scripts/package_anykernel.sh
 
       - name: Enable swap space
         run: |
-          # Remove existing swap file first
           sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
           sudo fallocate -l 12G /swapfile
@@ -173,33 +138,15 @@ jobs:
 
       - name: Build kernel
         run: |
-          cd kernel
-          # Reduce parallel jobs to prevent memory exhaustion
-          JOBS=$(( $(nproc) / 2 ))
-          [ "$JOBS" -lt 1 ] && JOBS=1
-
-          make -j$JOBS $MAKE_ARGS KCFLAGS="-Wno-error"
+          SUSFS_SUPPORT="${{ inputs.susfs_support }}" \
+          KPM_SUPPORT="${{ inputs.kpm_support }}" \
+          BBG_SUPPORT="${{ inputs.bbg_support }}" \
+          Scripts/build_kernel.sh
 
       - name: Package AnyKernel3
         run: |
-          # Verify build output exists
-          if [ ! -f kernel/out/arch/arm64/boot/Image ]; then
-            echo "ERROR: kernel Image not found — build failed"
-            exit 1
-          fi
-
-          # Copy kernel image
-          cp kernel/out/arch/arm64/boot/Image AnyKernel3/
-          cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
-
-          # Copy anykernel.sh from repo and set variant kernel string
-          cp Scripts/anykernel.sh AnyKernel3/anykernel.sh
-          sed -i 's/kernel.string=.*/kernel.string=NP2 Kernel - ReSukiSU/' AnyKernel3/anykernel.sh
-
-          # Create zip
-          cd AnyKernel3
-          ZIP_NAME="ReSukiSU-NP2-Pong.zip"
-          zip -r9 "../$ZIP_NAME" ./*
+          chmod +x Scripts/package_anykernel.sh
+          Scripts/package_anykernel.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
