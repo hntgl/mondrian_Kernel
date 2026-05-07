@@ -154,10 +154,11 @@ jobs:
           cd "$KERNEL_DIR"
           cp ../susfs4ksu/kernel_patches/fs/* ./fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+          susfs_patch="../susfs4ksu/kernel_patches/50_add_susfs_in_${{ inputs.susfs_branch || 'gki-android13-5.10' }}.patch"
           if [ "${{ inputs.susfs_force }}" = "true" ]; then
-            patch -p1 --force < ../susfs4ksu/kernel_patches/50_add_susfs_in_${{ inputs.susfs_branch || 'gki-android13-5.10' }}.patch || echo "Continuing despite patch failure"
-          elif
-            patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_${{ inputs.susfs_branch || 'gki-android13-5.10' }}.patch
+            patch -p1 --force < "$susfs_patch" || echo "Continuing despite patch failure"
+          else
+            patch -p1 < "$susfs_patch"
           fi
 
       - name: Apply BBG patches
