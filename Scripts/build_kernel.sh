@@ -81,18 +81,6 @@ if [ "${KPM_SUPPORT}" = "true" ]; then
 fi
 
 if [ "${BBG_SUPPORT}" = "true" ]; then
-  lsm_val=""
-  if grep -q '^CONFIG_LSM=' out/.config; then
-    lsm_val=$(sed -n 's/^CONFIG_LSM="\(.*\)"/\1/p' out/.config)
-  fi
-  if [ -z "${lsm_val}" ]; then
-    lsm_val="selinux,bpf"
-  fi
-  case ",${lsm_val}," in
-    *,baseband_guard,*) ;;
-    *) lsm_val="${lsm_val},baseband_guard" ;;
-  esac
-  echo "CONFIG_LSM=\"${lsm_val}\"" >> "${EXTRA_CFG}"
   echo "CONFIG_BBG=y" >> "${EXTRA_CFG}"
 fi
 
