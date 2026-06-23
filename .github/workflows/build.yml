@@ -11,7 +11,7 @@ on:
         description: 'Kernel source repo'
         required: false
         type: string
-        default: 'https://github.com/LineageOS/android_kernel_nothing_sm8475.git'
+        default: 'https://github.com/LineageOS/android_kernel_xiaomi_sm8450.git'
       kernel_branch:
         description: 'Kernel branch'
         required: false
@@ -26,7 +26,7 @@ on:
         description: 'Extra config fragments (space-separated, start with / if it is in the kernel root)'
         required: false
         type: string
-        default: 'vendor/waipio_GKI.config vendor/nothing/waipio_GKI.config vendor/debugfs.config'
+        default: 'vendor/mondrian_GKI.config vendor/xiaomi/mondrian_GKI.config vendor/debugfs.config'
       kpm_support:
         description: 'Enable KPM support'
         required: false
@@ -58,7 +58,7 @@ on:
         type: boolean
         default: false
       kernel_type:
-        description: 'Kernel type identifier (arter97, NothingOSS, LineageOS)'
+        description: 'Kernel type identifier (hntcpr, HyperOS, LineageOS)'
         required: false
         type: string
         default: 'LineageOS'
@@ -68,7 +68,7 @@ on:
       kernel_repo:
         required: false
         type: string
-        default: 'https://github.com/LineageOS/android_kernel_nothing_sm8475.git'
+        default: 'https://github.com/LineageOS/android_kernel_xiaomi_sm8450.git'
       kernel_branch:
         required: false
         type: string
@@ -81,7 +81,7 @@ on:
       extra_configs:
         required: false
         type: string
-        default: 'vendor/waipio_GKI.config vendor/nothing/waipio_GKI.config vendor/debugfs.config'
+        default: 'vendor/mondrian_GKI.config vendor/xiaomi/mondrian_GKI.config vendor/debugfs.config'
       kpm_support:
         required: false
         type: boolean
@@ -157,7 +157,7 @@ jobs:
       - name: Clone sources
         run: |
           git clone --depth=1 -b "${{ inputs.kernel_branch || 'lineage-23.2' }}" \
-            "${{ inputs.kernel_repo || 'https://github.com/LineageOS/android_kernel_nothing_sm8475.git' }}" \
+            "${{ inputs.kernel_repo || 'https://github.com/LineageOS/android_kernel_xiaomi_sm8450.git' }}" \
             "$KERNEL_DIR"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git "$ANYKERNEL_DIR"
